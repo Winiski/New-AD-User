@@ -1,0 +1,58 @@
+# Promps for first name, last name, and password. Creates AD account
+
+$FirstName = Read-Host -Prompt "Type new users first name here"
+$LastName = Read-Host -Prompt "Type new users last name here"
+$FirstInitial = "$FirstName".Substring(0,1)
+$Sam = ($LastName + $FirstInitial)
+$UserPassword = Read-Host -AsSecureString -Prompt "Type password for new user here"
+$UPNDomain = "@domain.com"
+$UPN = $Sam + $UPNDomain
+$FullName = $FirstName + " " + $LastName
+$Display = $FirstName + " " + $LastName
+ 
+New-ADUser `
+-Name $FullName `
+-GivenName $FirstName `
+-Surname $LastName `
+-SamAccountName $Sam `
+-UserPrincipalName $UPN `
+-DisplayName $Display `
+-Path "OU=Unsorted New Users,OU=Domain,DC=domain,DC=loc" `
+-AccountPassword $UserPassword `
+-Enabled $true
+
+#Signs into exchange server and enables remote mailbox - this section can be deleted if not needed
+
+Write-Host "Please sign in to exchange server..." -ForegroundColor Green
+$UserCredential = Get-Credential
+$Session = New-PSSession -ConfigurationName Microsoft.Exchange `
+-ConnectionUri http://server.domain.loc/PowerShell/ `
+-Authentication Kerberos `
+-Credential $UserCredential
+
+Import-PSSession $Session -DisableNameChecking
+
+$RRAD = "@domain.mail.onmicrosoft.com"
+$RRA = $Sam + $RRAD
+Enable-RemoteMailbox $FullName `
+-RemoteRoutingAddress $RRA
+
+Write-Host "RemoteRoutingAddress: $RRA"
+
+#Signs out of exchange server, runs azure delta sync
+
+Write-Host "Stopping PSSession, Starting Azure Delta Sync..."
+
+Remove-PSSession $Session
+
+Start-ADSyncSyncCycle -PolicyType Delta
+
+Write-Host "AD + O365 objects created. Please move AD object into correct group, assign O365 license" -ForegroundColor Green
+Write-Host " "
+Write-Host "Name = $FullName" -ForegroundColor Green
+Write-Host "SamAccountName = $Sam" -ForegroundColor Green
+Write-Host "UserPrincipalName = $UPN" -ForegroundColor Green
+Write-Host "AD user created in OU: Domain, Unsorted New Users" -ForegroundColor Green
+Write-Host " "
+
+Read-Host -Prompt "Press Enter to exit"
